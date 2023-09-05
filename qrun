@@ -18,7 +18,7 @@ def run_job(args):
     # qsub_params.extend(['-c', str(args.cpu)])
     # qsub_params.extend(['-g', group])
     if args.time is not None:
-        qsub_params.extend(['-t', args.time])
+        qsub_params.extend(['-l', f"h_rt={args.time}"])
     # if args.gpu > 0:
     #     qsub_params.extend([f'--gres=gpu:{args.gpu}'])
 
@@ -33,10 +33,12 @@ def run_job(args):
     # CMD
     real_cmd = args.cmd
     username = getpass.getuser()
+    real_cmd_without_singularity = None
     if args.singularity is not None:
         current_path = os.path.abspath(os.getcwd())
         singularity = ["singularity", "run" ,"--nv" ,"--bind",
                        f"/scratch/{username}:/scratch/{username},/groups/{group}:/groups/{group}", os.path.join(current_path, args.singularity)]
+        real_cmd_without_singularity = real_cmd
         real_cmd = singularity + real_cmd
 
     if args.detach:
@@ -44,6 +46,12 @@ def run_job(args):
         # shellscript = '#!/bin/sh\n' + ' '.join(['/usr/bin/srun', '-u', *real_cmd])
         time = datetime.now().strftime("%Y%m%d")
         file_name = "tmp_" + time + "_" + "{:010d}".format(random.randint(0, 10**10)) + ".sh"
+        if args.job_name:
+            file_name = f"{args.job_name}_{random.randint(0, 10**10)}.sh"
+        elif real_cmd_without_singularity is None:
+            file_name = f"{'_'.join(real_cmd)}_{random.randint(0, 10**10)}.sh"
+        else:
+            file_name = f"{'_'.join(real_cmd_without_singularity)}_{random.randint(0, 10**10)}.sh"
         output_path = f'/scratch/{username}/logs/'
         os.makedirs(output_path, exist_ok=True)
         with open(file_name, "w") as f:
@@ -57,8 +65,9 @@ def run_job(args):
             f.write(f"#$ -e {output_path}\n")
             f.write("#$ -cwd\n\n")
             f.write(" ".join(real_cmd))
-
         proc = subprocess.run(['/usr/local/bin/qsub', '-g', group, file_name])
+        if not args.keep_file:
+            os.remove(file_name)
     else:
         qsub_params.extend(['-g', group])
         # qsub_params.extend(['--mpi=pmix'])
@@ -109,7 +118,9 @@ if __name__ == '__main__':
         help=('The job name which will be shown in the job list (hjob). '
               'Will be set to the full command (ex: python train.py -lr 0.01) if not specified.')
     )
-
+    parser.add_argument(
+        '-k', dest='keep_file', default=False, action='store_true',
+    )
     parser.add_argument(
         '-s', dest='singularity', default=None,
         help='Run the command with given container.'
