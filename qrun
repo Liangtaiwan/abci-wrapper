@@ -23,7 +23,7 @@ def run_job(args):
     #     qsub_params.extend([f'--gres=gpu:{args.gpu}'])
 
     # TODO: partitions, change according to time
-    qsub_params.extend(['-l', f"{args.resource}=1"])
+    qsub_params.extend(['-l', f"{args.resource}={args.num_nodes}"])
 
     #TODO: add --signal
 
@@ -65,11 +65,16 @@ def run_job(args):
             f.write(f"#$ -e {output_path}\n")
             f.write("#$ -cwd\n\n")
             f.write(" ".join(real_cmd))
-        proc = subprocess.run(['/usr/local/bin/qsub', '-g', group, file_name])
+        if args.ar_id is not None:
+            proc = subprocess.run(['/usr/local/bin/qsub', '-g', group, '-ar', args.ar_id, file_name])
+        else:
+            proc = subprocess.run(['/usr/local/bin/qsub', '-g', group, file_name])
         if not args.keep_file:
             os.remove(file_name)
     else:
         qsub_params.extend(['-g', group])
+        if args.ar_id is not None:
+            qsub_params.extend(['-ar', args.ar_id])
         # qsub_params.extend(['--mpi=pmix'])
         # if sys.stdout.isatty():
         #     qsub_params.append('--pty')
@@ -78,7 +83,7 @@ def run_job(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        prog='arun',
+        prog='qrun',
         description='Run computing jobs.',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
@@ -92,34 +97,42 @@ if __name__ == '__main__':
               f'Valid partitions: {",".join(config.resources)}.'
     )
     parser.add_argument(
-        '-c', dest='cpu', type=int, default=4,
+        '-c', dest='cpu', type=int, default=0,
         help='Number of CPU cores to request.'
     )
     parser.add_argument(
-        '-m', dest='mem', type=float, default=30,
-        help=('Size of RAM (in GB) to request. If not specified, the memory size will be '
-              'automatically decided according to free memory size of available nodes.')
+        '-m', dest='mem', type=float, default=0,
+        help='Size of RAM (in GB) to request. If not specified, the memory size will be '
+              'automatically decided according to free memory size of available nodes.'
     )
     parser.add_argument(
-        '-g', dest='gpu_type', default=None, choices=["V100", "A100", None],
-        help=('Request a GPU type.', f'Valid types: V100, A100, None')
+        '-G', dest='gpu_type', default=None, choices=["V100", "A100", None],
+        help='Request a GPU type. Valid types: V100, A100, None'
     )
     parser.add_argument(
-        '-G', dest='gpu', action='count',
-        help=('Request a GPU. Set multiple times (ex: -GG) to request multiple GPUs. '
-              )
+        '-g', dest='gpu', type=int, default=0,
+        help='Number of CPU cores to request.',
+    )
+    parser.add_argument(
+        '-n', dest='num_nodes', type=int, default=1,
+        help='Number of nodes to request.',
     )
     parser.add_argument(
         '-d', dest='detach', default=False, action='store_true',
         help='Run job in detached (background) mode. Pseudo-tty is not supported in this mode.'
     )
     parser.add_argument(
-        '-n', dest='job_name', default=None,
+        '-N', dest='job_name', default=None,
         help=('The job name which will be shown in the job list (hjob). '
               'Will be set to the full command (ex: python train.py -lr 0.01) if not specified.')
     )
     parser.add_argument(
+        '-ar', dest='ar_id', default=None,
+        help=('Specify reserved ID (AR-ID), when using reserved compute nodes')
+    )
+    parser.add_argument(
         '-k', dest='keep_file', default=False, action='store_true',
+        help='Keep the shell script file after submitting the job.'
     )
     parser.add_argument(
         '-s', dest='singularity', default=None,
@@ -162,5 +175,7 @@ if __name__ == '__main__':
             args.cpu,
             args.mem
         )
-
+        if args.resource is None:
+            print("Error: Cannot find a valid resource type for the job. Please make sure the resource you request is available on ABCI.")
+            sys.exit(1)
     run_job(args)
