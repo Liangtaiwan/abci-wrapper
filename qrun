@@ -76,10 +76,13 @@ def run_job(args):
         if args.ar_id is not None:
             qsub_params.extend(['-ar', args.ar_id])
         # qsub_params.extend(['--mpi=pmix'])
-        # if sys.stdout.isatty():
-        #     qsub_params.append('--pty')
+        if sys.stdout.isatty():
+            qsub_params.extend(['-pty', 'y'])
         # qsub_params.extend(['-u', '--quit-on-interrupt'])
-        os.execl('/usr/local/bin/qrsh', '/usr/local/bin/qrsh', *qsub_params, *real_cmd)
+        if real_cmd[0] == '':
+            os.execl('/usr/local/bin/qrsh', '/usr/local/bin/qrsh', *qsub_params)
+        else:
+            os.execl('/usr/local/bin/qrsh', '/usr/local/bin/qrsh', *qsub_params, *real_cmd)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -139,7 +142,7 @@ if __name__ == '__main__':
         help='Run the command with given container.'
     )
     parser.add_argument(
-        'cmd',
+        'cmd', nargs='?', default='',
         help='The command to run.'
     )
     parser.add_argument(
